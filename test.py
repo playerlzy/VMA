@@ -1,65 +1,39 @@
-# Copyright (c) 2023, Zikang Zhou. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-from typing import Optional, Tuple, Union
+from enum import Enum, unique
+from pathlib import Path
+from random import choices
+from typing import Final
 
-import torch
-import torch.nn as nn
-from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.utils import softmax
+import click
+from joblib import Parallel, delayed
+from rich.progress import track
 
-from utils import weight_init
+from av2.datasets.motion_forecasting import scenario_serialization
+from av2.datasets.motion_forecasting.viz.scenario_visualization import (
+    visualize_scenario,
+)
+from av2.map.map_api import ArgoverseStaticMap
+
+from pathlib import Path
+
+def generate_scenario_visualization(scenario_path: Path) -> None:
+        """Generate and save dynamic visualization for a single Argoverse scenario.
+
+        NOTE: This function assumes that the static map is stored in the same directory as the scenario file.
+
+        Args:
+            scenario_path: Path to the parquet file corresponding to the Argoverse scenario to visualize.
+        """
+        scenario_id = scenario_path.stem.split("_")[-1]
+        static_map_path = (
+            scenario_path.parents[0] / f"log_map_archive_{scenario_id}.json"
+        )
+        viz_save_path = Path(f"{scenario_id}.mp4")
+
+        scenario = scenario_serialization.load_argoverse_scenario_parquet(scenario_path)
+        static_map = ArgoverseStaticMap.from_json(static_map_path)
+        visualize_scenario(scenario, static_map, viz_save_path)
 
 
-class AttentionLayer(MessagePassing):
+test = Path("../argoverse2/val/80032fab-8e7f-47ca-aac4-921d5a5c2edf/scenario_80032fab-8e7f-47ca-aac4-921d5a5c2edf.parquet")
 
-    def __init__(self) -> None:
-        super(AttentionLayer, self).__init__(aggr='add', node_dim=0)
-        self.num_heads = 8
-        self.head_dim = 16
-
-    def forward(self,
-                x: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-                edge_index: torch.Tensor) -> torch.Tensor:
-        x = self._attn_block(x, edge_index)
-        return x
-
-    def message(self,
-                q_i: torch.Tensor,
-                k_j: torch.Tensor,
-                v_j: torch.Tensor,
-                index: torch.Tensor,
-                ptr: Optional[torch.Tensor]) -> torch.Tensor:
-        sim = (q_i * k_j).sum(dim=-1)
-        attn = softmax(sim, index, ptr)
-        return v_j * attn.unsqueeze(-1)
-
-    def update(self,
-               inputs: torch.Tensor,
-               x: torch.Tensor) -> torch.Tensor:
-        inputs = inputs.view(-1, self.num_heads * self.head_dim)
-        return inputs
-
-    def _attn_block(self,
-                    x: torch.Tensor,
-                    edge_index: torch.Tensor) -> torch.Tensor:
-        q = x.view(-1, self.num_heads, self.head_dim)
-        k = x.view(-1, self.num_heads, self.head_dim)
-        v = x.view(-1, self.num_heads, self.head_dim)
-        agg = self.propagate(edge_index=edge_index, x=x, q=q, k=k, v=v)
-        return agg
-
-test = AttentionLayer()
-x = torch.ones(3, 128)
-edge_index = torch.tensor([[0, 2], [1, 0]], dtype=torch.long)
-print(test(x, edge_index))
+generate_scenario_visualization(test)

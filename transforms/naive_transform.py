@@ -41,19 +41,19 @@ class NaiveTransform:
         data["agent_feature"][:, :, 2] = rel_head.cos()
         data["agent_feature"][:, :, 3] = rel_head.sin()
         data["agent_feature"][:, :, 4:6] = torch.matmul(
-            data["global_velocity"][:, :self.num_historical_steps], agent_rot_mat
+            data["global_vel"][:, :self.num_historical_steps], agent_rot_mat
         )
 
         data["target"] = agent_origin.new_zeros(40, self.num_future_steps, 3)
         data["target"][:, :, :2] = torch.matmul(
-            data["global_position"][:, self.num_future_steps] - 
+            data["global_position"][:, self.num_historical_steps:] - 
             agent_origin.unsqueeze(1), agent_rot_mat
         )
         data["target"][:, :, 2] = wrap_angle(data["global_heading"][:, self.num_historical_steps:] -
                                              agent_head.unsqueeze(-1))
         #map feature
         map_cos, map_sin = map_theta.cos(), map_theta.sin()
-        map_rot_mat = map_theta.new_zeros(40, 2, 2)
+        map_rot_mat = map_theta.new_zeros(128, 2, 2)
         map_rot_mat[:, 0, 0] = map_cos
         map_rot_mat[:, 0, 1] = -map_sin
         map_rot_mat[:, 1, 0] = map_sin
@@ -74,10 +74,10 @@ class NaiveTransform:
         rel_theta = wrap_angle(global_theta - map_theta.unsqueeze(-1))
         data["map_feature"][:, :, 4] = rel_theta.cos()
         data["map_feature"][:, :, 5] = rel_theta.sin()
-
+        
         #m2m distance
         lane_map = data["lane_map"] + 1
-        data["m2m_feature"] = map_origin.new_zeros(40, 40, 4)
+        data["m2m_feature"] = map_origin.new_zeros(128, 128, 4)
         m2m_rel_pos = torch.matmul(
             map_origin.unsqueeze(1) - map_origin.unsqueeze(0), map_rot_mat
         )
@@ -90,7 +90,7 @@ class NaiveTransform:
         data["m2m_edge"] = torch.max(lane_map, 
                                      torch.norm(m2m_rel_pos, dim=-1) < self.m2m_radius
         )
-        data["m2m_dege"].fill_diagonal_(0)
+        data["m2m_edge"].fill_diagonal_(0)
 
         #a2m distance
         data["a2m_feature"] = agent_origin.new_zeros(40, 128, 4)
