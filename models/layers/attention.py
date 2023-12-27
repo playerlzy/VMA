@@ -92,7 +92,7 @@ class Attention(nn.Module):
         attn = torch.matmul(q, k.transpose(-1, -2)) * self.scale #[B, head*N, 1, M]
         valid_mask = (
             (src_mask.unsqueeze(1) | dst_mask.unsqueeze(2)) | (edge_mask == 0)
-        ).unsqueeze(-2).repeat(1, self.num_heads, 1, 1)
+        ).repeat(1, 1, self.num_heads).reshape(-1, len_q * self.num_heads, len_k).unsqueeze(-2)
         attn.masked_fill(valid_mask, -np.inf)
         score = F.softmax(attn, dim=-1)
         score.masked_fill(torch.isnan(score), 0)
